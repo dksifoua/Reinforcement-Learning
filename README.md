@@ -5,7 +5,7 @@
 
 # Reinforcement Learning
 
-# TODO
+**TODO**
 
 - [x] Decision Making Under Uncertainty
 - [ ] Markov Decision Processes
