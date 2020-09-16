@@ -2,7 +2,7 @@ from rl.agents.base import Agent
 from rl.environments.base import Environment
 
 
-class Experiment:
+class RLGlue:
 
     def __init__(self, env: Environment, agent: Agent):
         self.env = env
@@ -22,7 +22,7 @@ class Experiment:
         self.total_reward += reward
         if done:
             self.num_episodes += 1
-            self.agent.end(reward)
+            self.agent.end(reward, observation)
         else:
             self.num_steps += 1
             self.last_action = self.agent.step(reward, observation)
