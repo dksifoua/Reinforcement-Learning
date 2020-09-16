@@ -1,107 +1,61 @@
 import numpy as np
-from rl.agents.base import Agent
 from rl.agents.utils import argmax
 
 
-class BaseAgent(Agent):
+class BanditAgent:
+    """
+    Args:
+        n_actions (int): the number of action the agent can take.
+        initial_value (float): the initial action value for all actions.
+        epsilon (float): the probability for exploration in epsilon-greedy algorithm.
+        step_size (float): the constant step-size for updating action values estimates.
+        sample_average (bool): if True, use sample averages to update action values estimates else, use const step-size
+        C (float): this param controls the exploration in case of UCB algorithm.
+        time_step (int): the time step.
+        q_values (np.ndarray[float]): the action values estimates.
+        action_count (np.ndarray[int]): the number of time each action is taken by the agent.
+        last_action (int): the last action taken by the agent.
+        average_reward (float): the average reward.
+    """
 
-    def __init__(self):
-        self.n_actions = None
-        self.step_size = None
-        self.epsilon = None
-        self.C = None
-        self.time_step = None
-        self.q_values = None
-        self.arm_count = None
-        self.last_action = None
+    def __init__(self, n_actions, initial_value=0., epsilon=0., step_size=None, sample_average=False, C=None,
+                 time_step=0, q_values=None, action_count=None, last_action=None, average_reward=None):
+        self.n_actions = n_actions
+        self.initial_value = initial_value
+        self.epsilon = epsilon
+        self.step_size = step_size
+        self.sample_average = sample_average
+        self.C = C
+        self.time_step = time_step
+        self.q_values = q_values
+        self.action_count = action_count
+        self.last_action = last_action
+        self.average_reward = average_reward
 
-    def reset(self, **kwargs):
-        self.n_actions = kwargs.get('n_actions', 10)
-        self.step_size = kwargs.get('step_size', 0.1)
-        self.epsilon = kwargs.get('epsilon', 0.1)
-        self.C = kwargs.get('C', 2)
+    def reset(self) -> None:
+        self.q_values = np.zeros((self.n_actions,)) + self.initial_value
+        self.action_count = np.zeros((self.n_actions,))
         self.time_step = 0
-        self.q_values = np.ones((self.n_actions,)) * kwargs.get('initial_values', 0.0)
-        self.arm_count = np.zeros((self.n_actions,))
-        self.last_action = 0
 
-    def start(self, state, **kwargs):
-        self.last_action = np.random.choice(self.n_actions)
+    def choose_action(self) -> int:
+        if np.random.randn() < self.epsilon:
+            return np.random.choice(np.arange(self.n_actions))
+        if self.C is not None:
+            return argmax(self.q_values + self.C * np.sqrt(np.log(self.time_step + 1) / (self.action_count + 1e-5)))
+        return argmax(self.q_values)
+
+    def start(self) -> int:
+        self.last_action = self.choose_action()
         return self.last_action
 
-    def step(self, reward, state, **kwargs):
-        self.last_action = np.random.choice(self.n_actions)
+    def step(self, reward):
+        self.time_step += 1
+        self.average_reward += (reward - self.average_reward) / self.time_step
+        if self.sample_average:
+            N = self.action_count[self.last_action]
+            self.q_values[self.last_action] += (reward - self.q_values[self.last_action]) / N
+        else:
+            self.q_values[self.last_action] += self.step_size * (reward - self.q_values[self.last_action])
+        self.last_action = self.choose_action()
+        self.action_count[self.last_action] += 1
         return self.last_action
-
-    def end(self, reward, state, **kwargs):
-        pass
-
-
-class GreedyAgent(BaseAgent):
-    """
-    Agent that implements greedy action selection.
-    """
-
-    def step(self, reward, state, **kwargs):
-        action = argmax(self.q_values)
-        self.arm_count[self.last_action] += 1
-        self.q_values[self.last_action] += (1 / self.arm_count[self.last_action]) * (
-                reward - self.q_values[self.last_action])
-        self.last_action = action
-        return action
-
-
-class EpsilonGreedyAgent(BaseAgent):
-    """
-    Agent that implements $\varepsilon$-greedy action selection.
-    """
-
-    def step(self, reward, state, **kwargs):
-        if np.random.random() < self.epsilon:
-            action = np.random.choice(self.q_values.size)
-        else:
-            action = argmax(self.q_values)
-        self.arm_count[self.last_action] += 1
-        self.q_values[self.last_action] += (1 / self.arm_count[self.last_action]) * (
-                reward - self.q_values[self.last_action])
-        self.last_action = action
-        return action
-
-
-class EpsilonGreedyAgentWithConstantStepSize(BaseAgent):
-    """
-    Agent that implements $\varepsilon$-greedy action selection with constant step-size.
-    """
-
-    def step(self, reward, state, **kwargs):
-        if np.random.random() < self.epsilon:
-            action = np.random.choice(self.q_values.size)
-        else:
-            action = argmax(self.q_values)
-        self.q_values[self.last_action] += self.step_size * (reward - self.q_values[self.last_action])
-        self.last_action = action
-        return action
-
-
-class SoftmaxAgent(BaseAgent):
-    """
-    Agent that implements softmax action selection.
-    """
-    # TODO
-    #   Implements agent step using softmax
-    pass
-
-
-class SoftmaxAgentWithConstantStepSize(BaseAgent):
-    """
-    Agent that implements softmax action selection with constant step-size.
-    """
-    # TODO
-    #   Implements agent step using softmax action selection
-    pass
-
-
-class UpperConfidenceBoundAgent(BaseAgent):
-    # TODO
-    #   Implements agent step using Upper Confidence Bound (UCB) action selection
-    pass
