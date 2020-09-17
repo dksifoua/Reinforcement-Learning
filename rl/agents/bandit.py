@@ -18,7 +18,7 @@ class BanditAgent:
         average_reward (float): the average reward.
     """
 
-    def __init__(self, n_actions, initial_value=0., epsilon=0., step_size=None, sample_average=False, C=None,
+    def __init__(self, n_actions, initial_value=0., epsilon=0., step_size=None, sample_average=True, C=None,
                  time_step=0, q_values=None, action_count=None, last_action=None, average_reward=None):
         self.n_actions = n_actions
         self.initial_value = initial_value
@@ -35,27 +35,27 @@ class BanditAgent:
     def reset(self) -> None:
         self.q_values = np.zeros((self.n_actions,)) + self.initial_value
         self.action_count = np.zeros((self.n_actions,))
+        self.average_reward = 0.0
         self.time_step = 0
 
     def choose_action(self) -> int:
         if np.random.randn() < self.epsilon:
-            return np.random.choice(np.arange(self.n_actions))
+            return np.random.randint(self.n_actions)
         if self.C is not None:
             return argmax(self.q_values + self.C * np.sqrt(np.log(self.time_step + 1) / (self.action_count + 1e-5)))
         return argmax(self.q_values)
 
-    def start(self) -> int:
-        self.last_action = self.choose_action()
-        return self.last_action
-
-    def step(self, reward):
+    def act(self) -> int:
+        action = self.choose_action()
+        self.last_action = action
+        self.action_count[action] += 1
         self.time_step += 1
+        return action
+
+    def update_q_values(self, reward) -> None:
         self.average_reward += (reward - self.average_reward) / self.time_step
         if self.sample_average:
             N = self.action_count[self.last_action]
             self.q_values[self.last_action] += (reward - self.q_values[self.last_action]) / N
         else:
             self.q_values[self.last_action] += self.step_size * (reward - self.q_values[self.last_action])
-        self.last_action = self.choose_action()
-        self.action_count[self.last_action] += 1
-        return self.last_action

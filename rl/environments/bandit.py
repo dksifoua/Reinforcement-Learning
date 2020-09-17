@@ -10,7 +10,7 @@ class BanditEnvironment:
         best_action (float, optional): the action that gives the best reward in the environment.
     """
 
-    def __init__(self, n_actions, reward, rewards=None, best_action=None):
+    def __init__(self, n_actions, reward=0., rewards=None, best_action=None):
         self.n_actions = n_actions
         self.reward = reward
         self.rewards = rewards
