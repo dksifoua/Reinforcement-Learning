@@ -39,7 +39,7 @@ class BanditAgent:
         self.time_step = 0
 
     def choose_action(self) -> int:
-        if np.random.randn() < self.epsilon:
+        if np.random.rand() < self.epsilon:
             return np.random.randint(self.n_actions)
         if self.C is not None:
             return argmax(self.q_values + self.C * np.sqrt(np.log(self.time_step + 1) / (self.action_count + 1e-5)))

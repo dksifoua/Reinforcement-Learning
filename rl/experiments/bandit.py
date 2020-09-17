@@ -1,3 +1,4 @@
+import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Tuple
@@ -23,7 +24,7 @@ class BanditExperiment:
         rewards = np.zeros((len(agents), self.n_runs, self.n_time_steps))
         best_action_counts = np.zeros(rewards.shape)
         for i, agent in enumerate(agents):
-            for run in range(self.n_runs):
+            for run in tqdm.tqdm(range(self.n_runs)):
                 self.environment.reset()
                 agent.reset()
                 for time_step in range(self.n_time_steps):
