@@ -7,7 +7,7 @@
 
 **TODO**
 
-- [x] Decision Making Under Uncertainty
+- [x] Decision-Making Under Uncertainty
 - [ ] Markov Decision Processes
 - [ ] Values Functions & Bellman Equations
 - [ ] Dynamic Programming
