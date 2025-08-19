@@ -79,3 +79,19 @@ class BanditStepSizeAgent(BanditAgent):
         action = self.action
         self.action_counts[action] += 1
         self.action_values[action] += self.step_size * (reward - self.action_values[action])
+
+
+class BanditOptimisticAgent(BanditStepSizeAgent):
+    __slots__ = ("initial_action_value",)
+
+    def __init__(self, n_actions: int, epsilon: float, step_size: float, initial_action_value: float,
+                 seed: Optional[int] = None, rng: Optional[np.random.Generator] = None) -> None:
+        super().__init__(n_actions=n_actions, epsilon=epsilon, step_size=step_size, seed=seed, rng=rng)
+
+        self.initial_action_value = initial_action_value
+
+    def reset(self) -> None:
+        self.step = 0
+        self.rewards = []
+        self.action_counts = np.zeros(shape=(self.n_actions,), dtype=np.int32)
+        self.action_values = np.full(shape=(self.n_actions,), fill_value=self.initial_action_value, dtype=np.float64)
