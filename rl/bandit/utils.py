@@ -1,11 +1,11 @@
 import numpy as np
 import plotly.graph_objects as go
 
-from rl.bandit.environment import KArmedBanditEnvironment
+from rl.bandit.environment import BanditEnvironment
 
 
-def plot_k_armed_bandit_reward_distribution(n_actions: int, n_steps: int, seed: int) -> None:
-    environment = KArmedBanditEnvironment(n_actions=n_actions, seed=seed)
+def plot_bandit_reward_distribution(n_actions: int, n_steps: int, seed: int) -> None:
+    environment = BanditEnvironment(n_actions=n_actions, seed=seed)
     environment.reset()
 
     rewards = environment.rng.normal(

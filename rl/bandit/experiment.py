@@ -3,17 +3,17 @@ from typing import List, Tuple
 import tqdm
 import numpy as np
 
-from rl.bandit import KArmedBanditEnvironment, KArmedBanditAgent
+from rl.bandit import BanditEnvironment, BanditAgent
 
 
-class KArmedBanditExperiment:
+class BanditExperiment:
     __slots__ = (
         "environment",
         "n_runs",
         "n_steps",
     )
 
-    def __init__(self, environment: KArmedBanditEnvironment, n_runs: int, n_steps: int) -> None:
+    def __init__(self, environment: BanditEnvironment, n_runs: int, n_steps: int) -> None:
         if n_runs <= 0 or n_steps <= 0:
             raise ValueError("n_runs and n_steps must be positive")
 
@@ -21,7 +21,7 @@ class KArmedBanditExperiment:
         self.n_runs = n_runs
         self.n_steps = n_steps
 
-    def start(self, agents: List[KArmedBanditAgent]) -> Tuple[np.ndarray, np.ndarray]:
+    def start(self, agents: List[BanditAgent]) -> Tuple[np.ndarray, np.ndarray]:
         if not agents:
             raise ValueError("At least one agent must be provided")
 
