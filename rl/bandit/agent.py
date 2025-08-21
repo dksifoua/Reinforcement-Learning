@@ -2,7 +2,7 @@ from typing import List, Optional
 
 import numpy as np
 
-from rl.bandit.utils import guard_agent_act, guard_agent_update, guard_agent_init
+# from rl.bandit.guard import guard_agent_act, guard_agent_update, guard_agent_init
 
 
 class BanditAgent:
@@ -17,7 +17,7 @@ class BanditAgent:
         "action_values",
     )
 
-    @guard_agent_init
+    # @guard_agent_init
     def __init__(self, n_actions: int, epsilon: float, seed: Optional[int] = None,
                  rng: Optional[np.random.Generator] = None) -> None:
         self.n_actions = n_actions
@@ -36,7 +36,7 @@ class BanditAgent:
         self.action_counts = np.zeros(shape=(self.n_actions,), dtype=np.int32)
         self.action_values = np.zeros(shape=(self.n_actions,), dtype=np.float64)
 
-    @guard_agent_act
+    # @guard_agent_act
     def act(self) -> int:
         self.step += 1
 
@@ -49,7 +49,7 @@ class BanditAgent:
 
         return self.action
 
-    @guard_agent_update
+    # @guard_agent_update
     def update(self, reward: float) -> None:
         self.rewards.append(reward)
 
@@ -61,13 +61,13 @@ class BanditAgent:
 class BanditStepSizeAgent(BanditAgent):
     __slots__ = ("step_size",)
 
-    @guard_agent_init
+    # @guard_agent_init
     def __init__(self, n_actions: int, epsilon: float, step_size: float, seed: Optional[int] = None,
                  rng: Optional[np.random.Generator] = None) -> None:
         super().__init__(n_actions=n_actions, epsilon=epsilon, seed=seed, rng=rng)
         self.step_size = step_size
 
-    @guard_agent_update
+    # @guard_agent_update
     def update(self, reward: float) -> None:
         self.rewards.append(reward)
 
@@ -99,7 +99,7 @@ class BanditUCBAgent(BanditAgent):
         super().__init__(n_actions=n_actions, epsilon=0.0, seed=seed, rng=rng)
         self.c = c
 
-    @guard_agent_act
+    # @guard_agent_act
     def act(self) -> int:
         self.step += 1
 
@@ -110,3 +110,49 @@ class BanditUCBAgent(BanditAgent):
         self.action = self.rng.choice(actions)
 
         return self.action
+
+
+class BanditGradientAgent(BanditStepSizeAgent):
+    __slots__ = ("baseline", "action_preferences", "action_probabilities",)
+
+    # @guard_agent_init
+    def __init__(self, n_actions: int, step_size: float, baseline: bool, seed: Optional[int] = None,
+                 rng: Optional[np.random.Generator] = None) -> None:
+        super().__init__(n_actions=n_actions, epsilon=0.0, step_size=step_size, seed=seed, rng=rng)
+        self.baseline = baseline
+        self.action_preferences: Optional[np.ndarray] = None
+        self.action_probabilities: Optional[np.ndarray] = None
+
+    def reset(self) -> None:
+        super().reset()
+        self.action_preferences = np.zeros(shape=(self.n_actions,), dtype=np.float64)
+        self.action_probabilities = self.__class__.softmax(self.action_preferences)
+
+    # @guard_agent_act
+    def act(self) -> int:
+        self.step += 1
+        self.action = self.rng.choice(self.n_actions, p=self.action_probabilities)
+        return self.action
+
+    # @guard_agent_update
+    def update(self, reward: float) -> None:
+        average_reward = 0.0
+        if self.baseline:
+            if len(self.rewards) == 0:
+                average_reward = reward
+            else:
+                average_reward = np.mean(self.rewards)
+
+        self.rewards.append(reward)
+
+        mask = np.arange(self.n_actions) != self.action
+        self.action_preferences[self.action] += self.step_size \
+                                                * (reward - average_reward) \
+                                                * (1 - self.action_probabilities[self.action])
+        self.action_preferences[mask] -= self.step_size * (reward - average_reward) * self.action_probabilities[mask]
+        self.action_probabilities = self.__class__.softmax(self.action_preferences)
+
+    @classmethod
+    def softmax(cls, action_preferences: np.ndarray) -> np.ndarray:
+        exp = np.exp(action_preferences - np.max(action_preferences))
+        return exp / np.sum(exp)
