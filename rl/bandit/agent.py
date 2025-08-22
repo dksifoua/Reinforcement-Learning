@@ -1,158 +1,119 @@
-from typing import List, Optional
+from typing import Optional
 
 import numpy as np
 
-# from rl.bandit.guard import guard_agent_act, guard_agent_update, guard_agent_init
-
 
 class BanditAgent:
-    __slots__ = (
-        "n_actions",
-        "epsilon",
-        "rng",
-        "step",
-        "action",
-        "rewards",
-        "action_counts",
-        "action_values",
-    )
+    __slots__ = ("n_actions", "epsilon", "step_size", "initial_action_value", "c", "rng", "time_step", "action_counts",
+                 "action_values",)
 
-    # @guard_agent_init
-    def __init__(self, n_actions: int, epsilon: float, seed: Optional[int] = None,
-                 rng: Optional[np.random.Generator] = None) -> None:
+    def __init__(self, n_actions: int, epsilon: float = 0.0, step_size: Optional[float] = None,
+                 initial_action_value: Optional[float] = None, c: Optional[float] = None,
+                 rng: Optional[np.random.Generator] = None, seed: int = 123):
+        if n_actions <= 0:
+            raise ValueError("n_action must be positive integer.")
+        if not 0.0 <= epsilon < 1:
+            raise ValueError("epsilon must be in [0, 1).")
+        if step_size is not None and not 0.0 <= step_size <= 1:
+            raise ValueError("step_size must be in [0, 1].")
+
         self.n_actions = n_actions
         self.epsilon = epsilon
-        self.rng = np.random.default_rng(seed=seed) if rng is None else rng
+        self.step_size = step_size
+        self.initial_action_value = initial_action_value
+        self.c = c
+        self.rng = np.random.default_rng(seed) if rng is None else rng
 
-        self.step: Optional[int] = None
-        self.action: Optional[int] = None
-        self.rewards: Optional[List[float]] = None
-        self.action_counts: Optional[np.ndarray] = None
-        self.action_values: Optional[np.ndarray] = None
+        self.time_step: Optional[int] = None
+        self.action_counts: Optional[np.ndarray[int]] = None
+        self.action_values: Optional[np.ndarray[float]] = None
 
     def reset(self) -> None:
-        self.step = 0
-        self.rewards = []
-        self.action_counts = np.zeros(shape=(self.n_actions,), dtype=np.int32)
-        self.action_values = np.zeros(shape=(self.n_actions,), dtype=np.float64)
+        self.time_step = 0
+        self.action_counts = np.zeros(shape=(self.n_actions,), dtype=np.int64)
 
-    # @guard_agent_act
+        value = 0.0 if self.initial_action_value is None else self.initial_action_value
+        self.action_values = np.full(shape=(self.n_actions,), fill_value=value, dtype=np.float64)
+
     def act(self) -> int:
-        self.step += 1
+        if self.time_step is None:
+            raise RuntimeError("Agent is not ready. Call `reset()` before the first `act()`.")
+
+        self.time_step += 1
 
         if self.rng.random() < self.epsilon:
-            self.action = self.rng.integers(self.n_actions).item()
-        else:
-            max_action_value = np.max(self.action_values).item()
-            actions = np.flatnonzero(self.action_values == max_action_value)
-            self.action = self.rng.choice(actions)
+            return self.rng.choice(self.n_actions)
 
-        return self.action
+        q = self.action_values.copy()
+        if self.c is not None:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                uncertainty = np.sqrt(np.log(self.time_step) / self.action_counts)
 
-    # @guard_agent_update
-    def update(self, reward: float) -> None:
-        self.rewards.append(reward)
+            uncertainty[np.isnan(uncertainty)] = np.inf  # Untried actions get infinite uncertainty
+            q += self.c * uncertainty
 
-        action = self.action
+        actions = np.where(np.isclose(q, np.max(q)))[0]
+        return self.rng.choice(actions)
+
+    def update(self, action: int, reward: float) -> None:
+        if not (0 <= action < self.n_actions):
+            raise ValueError(f"action must be in [0, {self.n_actions - 1}].")
+
+        if self.time_step is None:
+            raise RuntimeError("Agent is not ready. Call `reset()` then `act()` before `update()`.")
+
         self.action_counts[action] += 1
-        self.action_values[action] += (reward - self.action_values[action]) / self.action_counts[action]
+
+        alpha = self.step_size if self.step_size else 1 / self.action_counts[action]
+        self.action_values[action] += alpha * (reward - self.action_values[action])
 
 
-class BanditStepSizeAgent(BanditAgent):
-    __slots__ = ("step_size",)
+class BanditGradientAgent:
+    __slots__ = ("n_actions", "step_size", "baseline", "time_step", "action_preferences", "average_reward", "rng",)
 
-    # @guard_agent_init
-    def __init__(self, n_actions: int, epsilon: float, step_size: float, seed: Optional[int] = None,
-                 rng: Optional[np.random.Generator] = None) -> None:
-        super().__init__(n_actions=n_actions, epsilon=epsilon, seed=seed, rng=rng)
+    def __init__(self, n_actions: int, step_size: float, baseline: bool, rng: Optional[np.random.Generator] = None,
+                 seed: int = 123) -> None:
+        if n_actions <= 0:
+            raise ValueError("n_action must be positive integer.")
+        if step_size is not None and not 0.0 <= step_size <= 1:
+            raise ValueError("step_size must be in [0, 1].")
+
+        self.n_actions = n_actions
         self.step_size = step_size
-
-    # @guard_agent_update
-    def update(self, reward: float) -> None:
-        self.rewards.append(reward)
-
-        action = self.action
-        self.action_counts[action] += 1
-        self.action_values[action] += self.step_size * (reward - self.action_values[action])
-
-
-class BanditOptimisticAgent(BanditStepSizeAgent):
-    __slots__ = ("initial_action_value",)
-
-    def __init__(self, n_actions: int, epsilon: float, step_size: float, initial_action_value: float,
-                 seed: Optional[int] = None, rng: Optional[np.random.Generator] = None) -> None:
-        super().__init__(n_actions=n_actions, epsilon=epsilon, step_size=step_size, seed=seed, rng=rng)
-        self.initial_action_value = initial_action_value
-
-    def reset(self) -> None:
-        self.step = 0
-        self.rewards = []
-        self.action_counts = np.zeros(shape=(self.n_actions,), dtype=np.int32)
-        self.action_values = np.full(shape=(self.n_actions,), fill_value=self.initial_action_value, dtype=np.float64)
-
-
-class BanditUCBAgent(BanditAgent):
-    __slots__ = ("c",)
-
-    def __init__(self, n_actions: int, c: float, seed: Optional[int] = None,
-                 rng: Optional[np.random.Generator] = None) -> None:
-        super().__init__(n_actions=n_actions, epsilon=0.0, seed=seed, rng=rng)
-        self.c = c
-
-    # @guard_agent_act
-    def act(self) -> int:
-        self.step += 1
-
-        # Untried actions get +∞ so they’re picked first
-        q = self.action_values + self.c * np.sqrt(np.log(self.step) / (self.action_counts + 1e-5))
-
-        actions = np.flatnonzero(np.isclose(q, q.max()))
-        self.action = self.rng.choice(actions)
-
-        return self.action
-
-
-class BanditGradientAgent(BanditStepSizeAgent):
-    __slots__ = ("baseline", "action_preferences", "action_probabilities",)
-
-    # @guard_agent_init
-    def __init__(self, n_actions: int, step_size: float, baseline: bool, seed: Optional[int] = None,
-                 rng: Optional[np.random.Generator] = None) -> None:
-        super().__init__(n_actions=n_actions, epsilon=0.0, step_size=step_size, seed=seed, rng=rng)
         self.baseline = baseline
+        self.rng = np.random.default_rng(seed) if rng is None else rng
+
+        self.time_step: Optional[int] = None
         self.action_preferences: Optional[np.ndarray] = None
-        self.action_probabilities: Optional[np.ndarray] = None
+        self.average_reward: Optional[float] = None
 
     def reset(self) -> None:
-        super().reset()
+        self.time_step = 0
         self.action_preferences = np.zeros(shape=(self.n_actions,), dtype=np.float64)
-        self.action_probabilities = self.__class__.softmax(self.action_preferences)
+        self.average_reward = 0.0
 
-    # @guard_agent_act
     def act(self) -> int:
-        self.step += 1
-        self.action = self.rng.choice(self.n_actions, p=self.action_probabilities)
-        return self.action
+        if self.time_step is None:
+            raise RuntimeError("Agent is not ready. Call `reset()` before the first `act()`.")
 
-    # @guard_agent_update
-    def update(self, reward: float) -> None:
-        average_reward = 0.0
+        self.time_step += 1
+        exp = np.exp(self.action_preferences - np.max(self.action_preferences))
+        return self.rng.choice(self.n_actions, p=exp / np.sum(exp))
+
+    def update(self, action: int, reward: float) -> None:
+        if not (0 <= action < self.n_actions):
+            raise ValueError(f"action must be in [0, {self.n_actions - 1}].")
+
+        if self.time_step is None:
+            raise RuntimeError("Agent is not ready. Call `reset()` then `act()` before `update()`.")
+
+        exp = np.exp(self.action_preferences - np.max(self.action_preferences))
+        probabilities = exp / np.sum(exp)
+        self.action_preferences[action] += self.step_size \
+                                           * (reward - self.average_reward) \
+                                           * (1 - probabilities[action])
+        mask = np.arange(self.n_actions) != action
+        self.action_preferences[mask] -= self.step_size * (reward - self.average_reward) * probabilities[mask]
+
         if self.baseline:
-            if len(self.rewards) == 0:
-                average_reward = reward
-            else:
-                average_reward = np.mean(self.rewards)
-
-        self.rewards.append(reward)
-
-        mask = np.arange(self.n_actions) != self.action
-        self.action_preferences[self.action] += self.step_size \
-                                                * (reward - average_reward) \
-                                                * (1 - self.action_probabilities[self.action])
-        self.action_preferences[mask] -= self.step_size * (reward - average_reward) * self.action_probabilities[mask]
-        self.action_probabilities = self.__class__.softmax(self.action_preferences)
-
-    @classmethod
-    def softmax(cls, action_preferences: np.ndarray) -> np.ndarray:
-        exp = np.exp(action_preferences - np.max(action_preferences))
-        return exp / np.sum(exp)
+            self.average_reward += (reward - self.average_reward) / self.time_step
