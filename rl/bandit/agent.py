@@ -81,15 +81,15 @@ class BanditAgent:
 @dataclasses.dataclass
 class BanditGradientAgentArguments:
     n_actions: int
-    step_size: Optional[float] = None
+    step_size: float = 0.1
     baseline: Optional[bool] = False
     seed: int = 123
 
     def __post_init__(self):
         if self.n_actions <= 0:
             raise ValueError("n_action must be positive integer.")
-        if self.step_size is not None and not 0.0 <= self.step_size <= 1:
-            raise ValueError("step_size must be in [0, 1].")
+        if self.step_size <= 0:
+            raise ValueError("step_size must be in greater than zero.")
 
 
 class BanditGradientAgent:
