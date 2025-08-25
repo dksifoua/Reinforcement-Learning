@@ -1,45 +1,95 @@
-from typing import List, Tuple
+import concurrent.futures
+import copy
+import os
+from typing import List, Tuple, Union
 
-import tqdm
 import numpy as np
+import tqdm
 
-from rl.bandit import BanditEnvironment, BanditAgent
+from rl.bandit.agent import BanditAgent, BanditAgentArguments, BanditGradientAgentArguments, BanditGradientAgent
+from rl.bandit.environment import BanditEnvironment, BanditEnvironmentArguments, \
+    BanditNonStationaryEnvironmentArguments, BanditNonStationaryEnvironment
+
+
+def run_once(
+        environment_args: Union[BanditEnvironmentArguments, BanditNonStationaryEnvironmentArguments],
+        agent_args: Union[BanditAgentArguments, BanditGradientAgentArguments],
+        agent_index: int,
+        run_index: int,
+        n_steps: int
+) -> Tuple[
+    int, int, np.ndarray, np.ndarray]:
+    rewards = np.zeros(shape=(n_steps,), dtype=float)
+    optimal_actions = np.zeros(shape=(n_steps,), dtype=bool)
+
+    if type(environment_args) is BanditEnvironmentArguments:
+        environment = BanditEnvironment(environment_args)
+    elif type(environment_args) is BanditNonStationaryEnvironmentArguments:
+        environment = BanditNonStationaryEnvironment(environment_args)
+    else:
+        raise ValueError("Environment arguments must be either BanditEnvironmentArguments or BanditNonStationaryEnvironmentArguments.")
+
+    if type(agent_args) is BanditAgentArguments:
+        agent = BanditAgent(agent_args)
+    elif type(agent_args) is BanditGradientAgentArguments:
+        agent = BanditGradientAgent(agent_args)
+    else:
+        raise ValueError("Agent arguments must be either BanditAgentArguments or BanditGradientAgentArguments.")
+
+    environment.reset()
+    agent.reset()
+    for step in range(n_steps):
+        action = agent.act()
+        reward = environment.step(action=action)
+        agent.update(action=action, reward=reward)
+
+        rewards[step] = reward
+        optimal_actions[step] = action == environment.best_action
+
+    return agent_index, run_index, rewards, optimal_actions
 
 
 class BanditExperiment:
-    __slots__ = (
-        "environment",
-        "n_runs",
-        "n_steps",
-    )
+    __slots__ = ("environment_args", "n_runs", "n_steps",)
 
-    def __init__(self, environment: BanditEnvironment, n_runs: int, n_steps: int) -> None:
-        if n_runs <= 0 or n_steps <= 0:
-            raise ValueError("n_runs and n_steps must be positive")
+    def __init__(
+            self, environment_args: Union[BanditEnvironmentArguments, BanditNonStationaryEnvironmentArguments],
+            n_steps: int,
+            n_runs: int
+    ) -> None:
+        if n_runs < 1 or n_steps < 1:
+            raise ValueError("n_runs and n_steps must be strictly positive.")
 
-        self.environment = environment
-        self.n_runs = n_runs
+        self.environment_args = environment_args
         self.n_steps = n_steps
+        self.n_runs = n_runs
 
-    def start(self, agents: List[BanditAgent]) -> Tuple[np.ndarray, np.ndarray]:
-        if not agents:
-            raise ValueError("At least one agent must be provided")
+    def start(
+            self,
+            agent_args_list: List[Union[BanditAgentArguments, BanditGradientAgentArguments]]
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        if not agent_args_list:
+            raise ValueError("At least one agent params must be provided.")
 
-        n_agents = len(agents)
-        rewards = np.zeros((n_agents, self.n_runs, self.n_steps), dtype=np.float64)
-        optimal_actions = np.zeros((n_agents, self.n_runs, self.n_steps), dtype=bool)
+        n_agents = len(agent_args_list)
+        rewards = np.zeros(shape=(n_agents, self.n_runs, self.n_steps,), dtype=float)
+        optimal_actions = np.zeros(shape=(n_agents, self.n_runs, self.n_steps,), dtype=bool)
 
-        for i, agent in enumerate(agents):
-            for run in tqdm.tqdm(range(self.n_runs), desc=f"Agent-{i}"):
-                self.environment.reset()
-                agent.reset()
+        for agent_index, agent_args in enumerate(agent_args_list):
+            with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+                futures = []
+                for run_index in range(self.n_runs):
+                    self.environment_args.seed = run_index
+                    agent_args.seed = run_index
+                    futures.append(executor.submit(run_once, copy.deepcopy(self.environment_args),
+                                                   copy.deepcopy(agent_args), agent_index, run_index, self.n_steps))
 
-                for step in range(self.n_steps):
-                    action = agent.act()
-                    reward = self.environment.step(action=action)
-                    agent.update(reward=reward)
+                with tqdm.tqdm(total=self.n_runs, desc=f"Agent-{agent_index}") as pbar:
+                    for completed_future in concurrent.futures.as_completed(futures):
+                        _agent_index, _run_index, _rewards, _optimal_actions = completed_future.result()
+                        rewards[_agent_index, _run_index] = _rewards
+                        optimal_actions[_agent_index, _run_index] = _optimal_actions
 
-                    rewards[i, run, step] = reward
-                    optimal_actions[i, run, step] = (action == self.environment.best_action)
+                        pbar.update()
 
         return rewards.mean(axis=1), optimal_actions.mean(axis=1) * 100
