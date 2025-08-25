@@ -1,5 +1,3 @@
-[![Build Status](https://travis-ci.com/dksifoua/Reinforcement-Learning.svg?branch=master)](https://travis-ci.com/dksifoua/Reinforcement-Learning.svg?branch=master)
-[![master](https://codecov.io/gh/dksifoua/Reinforcement-Learning/branch/master/graph/badge.svg)](https://codecov.io/gh/dksifoua/Reinforcement-Learning)
 [![contributions welcome](https://img.shields.io/badge/contributions-welcome-blue.svg?style=flat)](https://github.com/dksifoua/Reinforcement-Learning/issues)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
@@ -7,7 +5,7 @@
 
 **TODO**
 
-- [x] Decision-Making Under Uncertainty
+- [x] Sequential Decision-Making Under Uncertainty
 - [ ] Markov Decision Processes
 - [ ] Values Functions & Bellman Equations
 - [ ] Dynamic Programming
